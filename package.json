@@ -1,0 +1,17 @@
+{
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "description": "بوت دسكورد بسيط",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.10.0",
+    "mongoose": "^8.0.0",
+    "node-cron": "^3.0.3"
+  }
+}
