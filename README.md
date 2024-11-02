@@ -47,7 +47,7 @@ npm start
 - ✅ حماية من معدلات الطلبات العالية
 
 ## الدعم
-- Discord Server: [Currently Not Available]
+- Discord Server: [https://discord.gg/haxPuBDJwv]
 - Email: [i0xjgki4f@mozmail.com]
 
 ## الترخيص
