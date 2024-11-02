@@ -1,4 +1,4 @@
-# Discord Attendance & Ticket Bot
+# ArabPast bot
 
 بوت Discord لإدارة الحضور والتذاكر في السيرفرات.
 
