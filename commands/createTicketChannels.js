@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -12,33 +12,71 @@ module.exports = {
         ephemeral: true
       });
     }
+
+    // في بداية تنفيذ الأمر
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: 'هذا الأمر متاح للمشرفين فقط!',
+        ephemeral: true
+      });
+    }
+
     const guild = interaction.guild;
+    let logChannel, requestChannel;
 
     try {
+      // التحقق من عدم وجود القنوات مسبقاً
+      const existingLogChannel = guild.channels.cache.find(c => c.name === 'سجل-التذاكر');
+      const existingRequestChannel = guild.channels.cache.find(c => c.name === 'طلب-تذكرة');
+
+      if (existingLogChannel || existingRequestChannel) {
+        return interaction.reply({
+          content: 'نظام التذاكر موجود بالفعل في هذا السيرفر!',
+          ephemeral: true
+        });
+      }
+
       // إنشاء قناة السجلات
-      const logChannel = await guild.channels.create({
+      logChannel = await guild.channels.create({
         name: 'سجل-التذاكر',
-        type: 0, // نوع القناة النصية
+        type: 0,
         permissionOverwrites: [
           {
             id: guild.id,
             deny: ['ViewChannel', 'SendMessages'],
           },
           {
-            id: interaction.guild.me.id,
+            id: interaction.client.user.id,
             allow: ['ViewChannel', 'SendMessages'],
           },
           {
-            id: interaction.guild.roles.cache.find(r => r.permissions.has('ADMINISTRATOR')).id,
+            id: interaction.guild.roles.cache.find(r => r.permissions.has(PermissionFlagsBits.Administrator))?.id,
             allow: ['ViewChannel'],
+            deny: ['SendMessages'], // حتى المشرفين لا يمكنهم الكتابة
           }
-        ]
+        ].filter(Boolean)
       });
 
       // إنشاء قناة طلب التذاكر
-      const requestChannel = await guild.channels.create({
+      requestChannel = await guild.channels.create({
         name: 'طلب-تذكرة',
-        type: 0
+        type: 0,
+        permissionOverwrites: [
+          {
+            id: guild.id, // @everyone
+            allow: ['ViewChannel'],
+            deny: ['SendMessages'], // منع الجميع من الكتابة
+          },
+          {
+            id: interaction.client.user.id, // البوت
+            allow: ['ViewChannel', 'SendMessages'],
+          },
+          {
+            id: interaction.guild.roles.cache.find(r => r.permissions.has(PermissionFlagsBits.Administrator))?.id,
+            allow: ['ViewChannel'],
+            deny: ['SendMessages'], // حتى المشرفين لا يمكنهم الكتابة
+          }
+        ].filter(Boolean)
       });
 
       // إرسال رسالة مع زر التفاعل
@@ -64,10 +102,14 @@ module.exports = {
         ephemeral: true 
       });
     } catch (error) {
-      console.error(error);
-      await interaction.reply({ 
-        content: 'حدث خطأ أثناء إعداد نظام التذاكر', 
-        ephemeral: true 
+      console.error('خطأ في إنشاء القنوات:', error);
+      // محاولة تنظيف القنوات التي تم إنشاؤها في حالة حدوث خطأ
+      if (logChannel) await logChannel.delete().catch(console.error);
+      if (requestChannel) await requestChannel.delete().catch(console.error);
+      
+      await interaction.reply({
+        content: 'حدث خطأ أثناء إعداد نظام التذاكر',
+        ephemeral: true
       });
     }
   }

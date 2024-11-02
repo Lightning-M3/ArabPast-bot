@@ -1,5 +1,4 @@
 # Dependencies
-node_modules
 node_modules/
 
 # Environment
@@ -8,7 +7,7 @@ node_modules/
 .env.*.local
 
 # Logs
-logs
+logs/
 *.log
 
 # System Files

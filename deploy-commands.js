@@ -1,30 +1,37 @@
 const { REST, Routes } = require('discord.js');
+const fs = require('node:fs');
+const path = require('node:path');
 require('dotenv').config();
 
-const commands = [
-  {
-    name: 'create_ticket_channels',
-    description: 'إعداد نظام إدارة التذاكر',
-  },
-  {
-    name: 'setup_attendance',
-    description: 'إعداد نظام تتبع الحضور',
-  }
-];
+const commands = [];
+// جلب جميع ملفات الأوامر من مجلد commands
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+    if ('data' in command && 'execute' in command) {
+        commands.push(command.data.toJSON());
+        console.log(`✅ تم تحميل الأمر: ${command.data.name}`);
+    } else {
+        console.log(`⚠️ الأمر في ${filePath} يفتقد إلى خاصية data أو execute المطلوبة`);
+    }
+}
+
+const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
-  try {
-    console.log('بدء تحديث أوامر التطبيق (/).');
+    try {
+        console.log(`بدء تحديث ${commands.length} من الأوامر (/).`);
 
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands },
-    );
+        const data = await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands },
+        );
 
-    console.log('تم تحديث أوامر التطبيق (/) بنجاح لجميع السيرفرات.');
-  } catch (error) {
-    console.error(error);
-  }
+        console.log(`✅ تم تحديث ${data.length} من الأوامر (/) بنجاح.`);
+    } catch (error) {
+        console.error(error);
+    }
 })(); 
