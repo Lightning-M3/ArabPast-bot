@@ -1,1 +1,16 @@
- 
+# Dependencies
+node_modules
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+
+# System Files
+.DS_Store
+Thumbs.db
