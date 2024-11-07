@@ -182,7 +182,7 @@ async function sendDailyReport(guild) {
       if (userSessions > 0) {
         totalMinutes += userTotal;
         userStats.set(member.id, {
-          username: member.user.username,
+          displayName: member.displayName,
           totalMinutes: userTotal,
           sessions: userSessions,
           earliestCheckIn: userEarliestCheckIn,
@@ -198,7 +198,7 @@ async function sendDailyReport(guild) {
     reportText = sortedUsers.map(([, stats]) => {
       const hours = Math.floor(stats.totalMinutes / 60);
       const minutes = stats.totalMinutes % 60;
-      return `**${stats.username}**\n` +
+      return `**${stats.displayName}**\n` +
              `⏰ المدة: ${hours}:${minutes.toString().padStart(2, '0')} ساعة\n` +
              `📊 عدد الجلسات: ${stats.sessions}\n` +
              `🕐 أول حضور: ${stats.earliestCheckIn?.toLocaleTimeString('en-GB', { 
