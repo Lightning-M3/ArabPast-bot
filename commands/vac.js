@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const Leave = require('../models/Leave');
 
 module.exports = {
@@ -13,13 +13,19 @@ module.exports = {
                     option.setName('reason')
                         .setDescription('سبب الإجازة')
                         .setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('duration')
+                        .setDescription('مدة الإجازة (1-30 يوم)')
+                        .setRequired(true)
+                        .setMinValue(1)
+                        .setMaxValue(30))
                 .addStringOption(option =>
-                    option.setName('start')
-                        .setDescription('تاريخ بداية الإجازة (DD/MM/YYYY مثال: 15/12/2024)')
+                    option.setName('username')
+                        .setDescription('الاسم الداخلي')
                         .setRequired(true))
                 .addStringOption(option =>
-                    option.setName('end')
-                        .setDescription('تاريخ نهاية الإجازة (DD/MM/YYYY مثال: 20/12/2024)')
+                    option.setName('displayname')
+                        .setDescription('الاسم الخارجي')
                         .setRequired(true)))
         .addSubcommand(subcommand =>
             subcommand
@@ -51,30 +57,13 @@ module.exports = {
 async function handleLeaveRequest(interaction) {
     try {
         const reason = interaction.options.getString('reason');
+        const duration = interaction.options.getInteger('duration');
+        const username = interaction.options.getString('username');
+        const displayname = interaction.options.getString('displayname');
         
-        // تحويل التاريخ من DD/MM/YYYY إلى كائن Date
-        const startDateStr = interaction.options.getString('start');
-        const endDateStr = interaction.options.getString('end');
-        
-        // التحقق من صيغة التاريخ
-        if (!isValidDateFormat(startDateStr) || !isValidDateFormat(endDateStr)) {
-            return await interaction.reply({
-                content: '❌ صيغة التاريخ غير صحيحة. الرجاء استخدام DD/MM/YYYY',
-                ephemeral: true
-            });
-        }
-
-        // تحويل التاريخ
-        const startDate = convertToDate(startDateStr);
-        const endDate = convertToDate(endDateStr);
-
-        // التحقق من صحة التواريخ
-        if (startDate > endDate || startDate < new Date()) {
-            return await interaction.reply({
-                content: '❌ تواريخ غير صحيحة. تأكد أن تاريخ البداية لا يسبق اليوم وأن تاريخ النهاية لا يسبق تاريخ البداية',
-                ephemeral: true
-            });
-        }
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + duration - 1);
 
         // إنشاء طلب الإجازة
         const leave = await Leave.create({
@@ -83,17 +72,21 @@ async function handleLeaveRequest(interaction) {
             reason,
             startDate,
             endDate,
-            status: 'approved'
+            username,
+            displayname,
+            status: 'pending'
         });
 
         // إرسال رسالة للمستخدم
         const userEmbed = new EmbedBuilder()
-            .setTitle('✅ تم تسجيل الإجازة')
-            .setColor(0x00FF00)
+            .setTitle('📝 تم تسجيل طلب الإجازة')
+            .setColor(0xFFA500)
+            .setDescription('طلبك قيد المراجعة. سيتم إشعارك عند الموافقة أو الرفض.')
             .addFields(
                 { name: 'السبب', value: reason },
-                { name: 'من', value: formatDate(startDate) },
-                { name: 'إلى', value: formatDate(endDate) }
+                { name: 'المدة', value: `${duration} يوم` },
+                { name: 'الاسم الداخلي', value: username },
+                { name: 'الاسم الخارجي', value: displayname }
             )
             .setTimestamp();
 
@@ -163,27 +156,23 @@ async function handleLeaveRequest(interaction) {
             }
         }
 
-        // إرسال سجل الإجازة الجديدة
+        // إرسال سجل الإجازة الجديدة مع الأزرار
         if (logsChannel) {
             const logEmbed = new EmbedBuilder()
-                .setTitle('📋 إجازة جديدة')
-                .setColor(0x0099FF)
+                .setTitle('📋 طلب إجازة جديد')
+                .setColor(0xFFA500)
                 .addFields(
                     { 
                         name: 'معلومات الإداري',
-                        value: `الإداري: <@${interaction.user.id}>\nالاسم: ${interaction.user.tag}`
+                        value: `الإداري: <@${interaction.user.id}>\nالاسم الداخلي: ${username}\nالاسم الخارجي: ${displayname}`
                     },
                     { 
                         name: 'تفاصيل الإجازة',
-                        value: `السبب: ${reason}\nمن: ${formatDate(startDate)}\nإلى: ${formatDate(endDate)}`
+                        value: `السبب: ${reason}\nالمدة: ${duration} يوم`
                     },
                     {
-                        name: 'المدة',
-                        value: `${calculateDuration(startDate, endDate)} يوم`
-                    },
-                    {
-                        name: 'وقت التسجيل',
-                        value: `<t:${Math.floor(Date.now() / 1000)}:F>`
+                        name: 'الحالة',
+                        value: 'قيد المراجعة'
                     }
                 )
                 .setFooter({ 
@@ -192,7 +181,19 @@ async function handleLeaveRequest(interaction) {
                 })
                 .setTimestamp();
 
-            await logsChannel.send({ embeds: [logEmbed] });
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`approve_leave_${leave._id}`)
+                        .setLabel('قبول')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`reject_leave_${leave._id}`)
+                        .setLabel('رفض')
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+            await logsChannel.send({ embeds: [logEmbed], components: [row] });
         }
 
     } catch (error) {
