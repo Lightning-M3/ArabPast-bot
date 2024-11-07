@@ -26,6 +26,14 @@ const leaveSchema = new mongoose.Schema({
         enum: ['pending', 'approved', 'rejected', 'completed'],
         default: 'pending'
     },
+    username: {
+        type: String,
+        required: true
+    },
+    displayname: {
+        type: String,
+        required: true
+    },
     createdAt: {
         type: Date,
         default: Date.now
