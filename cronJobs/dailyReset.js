@@ -216,36 +216,69 @@ async function sendDailyReport(guild) {
     const totalHours = Math.floor(totalMinutes / 60);
     const remainingMinutes = totalMinutes % 60;
 
-    await logChannel.send({
-      embeds: [{
-        title: '📊 التقرير اليومي للحضور',
-        description: `تقرير يوم ${today.toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        })}`,
-        fields: [
-          {
-            name: '📈 إحصائيات عامة',
-            value: 
-              `👥 إجمالي الحضور: ${records.length} عضو\n` +
-              `⏱️ إجمالي ساعات العمل: ${totalHours}:${remainingMinutes.toString().padStart(2, '0')} ساعة\n` +
-              `🔄 إجمالي الجلسات: ${totalSessions}\n` +
-              `⏰ أول حضور: ${earliestCheckIn.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}\n` +
-              `⏰ آخر انصراف: ${latestCheckOut.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}`
-          },
-          {
-            name: '👤 تفاصيل الأعضاء',
-            value: reportText || 'لا يوجد سجلات'
-          }
-        ],
-        color: 0x00ff00,
-        timestamp: new Date(),
-        footer: {
-          text: 'تم إنشاء التقرير في'
+    // Formulate the message for the embed
+    const embed = {
+      title: '📊 التقرير اليومي للحضور',
+      description: `تقرير يوم ${today.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })}`,
+      fields: [
+        {
+          name: '📈 إحصائيات عامة',
+          value: 
+            `👥 إجمالي الحضور: ${records.length} عضو\n` +
+            `⏱️ إجمالي ساعات العمل: ${totalHours}:${remainingMinutes.toString().padStart(2, '0')} ساعة\n` +
+            `🔄 إجمالي الجلسات: ${totalSessions}\n` +
+            `⏰ أول حضور: ${earliestCheckIn.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}\n` +
+            `⏰ آخر انصراف: ${latestCheckOut.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+        },
+        {
+          name: '👤 تفاصيل الأعضاء',
+          value: reportText || 'لا يوجد سجلات'
         }
-      }]
-    });
+      ],
+      color: 0x00ff00,
+      timestamp: new Date(),
+      footer: {
+        text: 'تم إنشاء التقرير في'
+      }
+    };
+
+    // Split and send the embed if necessary
+    const embedString = JSON.stringify(embed);
+    if (embedString.length > 1024) {
+      // Split the reportText into chunks
+      const chunks = [];
+      let chunk = '';
+      for (const line of reportText.split('\n')) {
+        if ((chunk + line + '\n').length > 1024) {
+          chunks.push(chunk);
+          chunk = line + '\n';
+        } else {
+          chunk += line + '\n';
+        }
+      }
+      if (chunk) chunks.push(chunk);
+
+      // Send each chunk
+      for (const [index, chunk] of chunks.entries()) {
+        await logChannel.send({
+          embeds: [{
+            ...embed,
+            fields: [{
+              name: '👤 تفاصيل الأعضاء',
+              value: chunk || 'لا يوجد سجلات'
+            }]
+          }]
+        });
+      }
+    } else {
+      // Send the embed normally
+      await logChannel.send({ embeds: [embed] });
+    }
+
   } catch (error) {
     console.error('Error sending daily report:', error);
   }
@@ -285,4 +318,4 @@ function setupDailyReset(client) {
 module.exports = {
   setupDailyReset,
   forceCheckOutAll
-}; 
+};
