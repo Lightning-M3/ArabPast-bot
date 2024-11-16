@@ -508,6 +508,7 @@ client.on(Events.GuildDelete, async guild => {
 });
 
 // معالجة حدث تحديث السيرفر
+const { updateBotPresence } = require('./utils/botPresence.js');
 client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
     try {
         // تحديث مظهر البوت إذا تغيرت إعدادات السيرفر
