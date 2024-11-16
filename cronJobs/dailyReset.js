@@ -204,12 +204,14 @@ async function sendDailyReport(guild) {
              `🕐 أول حضور: ${stats.earliestCheckIn?.toLocaleTimeString('en-GB', { 
                hour: '2-digit', 
                minute: '2-digit', 
-               hour12: true 
+               hour12: true,
+               timezone: 'Asia/Riyadh'
              }) || 'غير متوفر'}\n` +
              `🕐 آخر انصراف: ${stats.latestCheckOut?.toLocaleTimeString('en-GB', { 
                hour: '2-digit', 
                minute: '2-digit', 
-               hour12: true 
+               hour12: true,
+               timezone: 'Asia/Riyadh'
              }) || 'غير متوفر'}\n`;
     }).join('\n');
 
