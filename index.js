@@ -28,6 +28,9 @@ const PerformanceAnalyzer = require('./utils/performanceAnalyzer');
 const Points = require('./models/Points');
 const Statistics = require('./models/Statistics');
 const Attendance = require('./models/Attendance');
+const Leave = require('./models/Leave');
+const PointsManager = require('./models/PointsManager');
+const StatisticsManager = require('./models/StatisticsManager');
 
 // ============= الدوال المساعدة الأساسية =============
 
@@ -95,51 +98,56 @@ async function handleCreateTicket(interaction) {
 async function createTicketChannel(interaction, ticketType) {
     const guild = interaction.guild;
     const member = interaction.member;
-    
+
     // إنشاء اسم للتذكرة
     const ticketName = `ticket-${member.user.username}-${Date.now().toString().slice(-4)}`;
-    
-    // إنشاء القناة
-    const channel = await guild.channels.create({
-        name: ticketName,
-        type: 0, // نوع القناة النصية
-        permissionOverwrites: [
-            {
-                id: guild.id,
-                deny: ['ViewChannel'],
-            },
-            {
-                id: member.id,
-                allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
-            },
-            {
-                id: interaction.client.user.id,
-                allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
-            },
-        ],
-    });
 
-    // إرسال الرسالة الأولى في التذكرة
-    const embed = new EmbedBuilder()
-        .setTitle(`تذكرة ${ticketType}`)
-        .setDescription(`مرحباً ${member}!\nسيقوم فريق الدعم بالرد عليك قريباً.`)
-        .setColor(0x00ff00)
-        .setTimestamp();
+    try {
+        // إنشاء القناة
+        const channel = await guild.channels.create({
+            name: ticketName,
+            type: 0, // نوع القناة النصية
+            permissionOverwrites: [
+                {
+                    id: guild.id,
+                    deny: ['ViewChannel'],
+                },
+                {
+                    id: member.id,
+                    allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+                },
+                {
+                    id: interaction.client.user.id,
+                    allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+                },
+            ],
+        });
 
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId('close_ticket')
-                .setLabel('إغلاق التذكرة')
-                .setStyle(ButtonStyle.Danger)
-        );
+        // إرسال الرسالة الأولى في التذكرة
+        const embed = new EmbedBuilder()
+            .setTitle(`تذكرة ${ticketType}`)
+            .setDescription(`مرحباً ${member}! سيقوم فريق الدعم بالرد عليك قريباً.`)
+            .setColor(0x00ff00)
+            .setTimestamp();
 
-    await channel.send({
-        embeds: [embed],
-        components: [row]
-    });
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('close_ticket')
+                    .setLabel('إغلاق التذكرة')
+                    .setStyle(ButtonStyle.Danger)
+            );
 
-    return channel;
+        await channel.send({
+            embeds: [embed],
+            components: [row]
+        });
+
+        return channel;
+    } catch (error) {
+        console.error('Error creating ticket channel:', error);
+        throw new Error('فشل إنشاء قناة التذكرة. حاول مرة أخرى لاحقاً.');
+    }
 }
 
 // دالة لتسجيل أحداث التذاكر
@@ -340,7 +348,6 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
     }
-    // ... باقي معالجات التفاعل (الأزرار وغيرها) ...
 });
 
 // معالجة الأزرار
@@ -350,23 +357,27 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         logger.info(`Button pressed: ${interaction.customId}`);
 
-        if (interaction.customId === 'create_ticket') {
-            await handleCreateTicket(interaction);
-        }
-        else if (interaction.customId.startsWith('close_ticket_')) {
-            await handleCloseTicket(interaction);
-        }
-        else if (interaction.customId === 'check_in') {
-            await handleCheckIn(interaction);
-        }
-        else if (interaction.customId === 'check_out') {
-            await handleCheckOut(interaction);
+        switch (interaction.customId) {
+            case 'create_ticket':
+                await handleCreateTicket(interaction);
+                break;
+            case 'close_ticket_':
+                await handleCloseTicket(interaction);
+                break;
+            case 'check_in':
+                await handleCheckIn(interaction);
+                break;
+            case 'check_out':
+                await handleCheckOut(interaction);
+                break;
+            default:
+                logger.warn(`Unhandled button interaction: ${interaction.customId}`);
         }
 
     } catch (error) {
         logger.error('Error in button interaction:', error);
+        const errorMessage = 'حدث خطأ أثناء معالجة الطلب. الرجاء المحاولة مرة أخرى.';
         try {
-            const errorMessage = 'حدث خطأ أثناء معالجة الطلب. الرجاء المحاولة مرة أخرى.';
             if (interaction.replied || interaction.deferred) {
                 await interaction.followUp({ content: errorMessage, ephemeral: true });
             } else {
@@ -616,7 +627,8 @@ async function checkTicketLimits(userId, guildId) {
 // دالة معالجة إنشاء التذكرة
 async function handleCreateTicket(interaction) {
     try {
-        await interaction.deferReply({ ephemeral: true });
+        // إرسال رد أولي سريع
+        await interaction.reply({ content: '🔄 جاري إنشاء التذكرة...', ephemeral: true });
 
         // التحقق من حدود التذاكر
         const userTickets = await Ticket.countDocuments({
@@ -632,8 +644,16 @@ async function handleCreateTicket(interaction) {
             });
         }
 
-        // الحصول على محتوى التذكرة من النموذج
-        const content = interaction.options.getString('content');
+        // إذا كنت بحاجة إلى الحصول على محتوى التذكرة، تأكد من وجوده
+        // مثال على ذلك إذا كان هذا يأتي من محتوى الزر:
+        const content = interaction.message.content; // أو استخدام محتوى محدد مسبقاً
+
+        if (!content) {
+            return await interaction.followUp({
+                content: '❌ لم يتم توفير محتوى التذكرة.',
+                ephemeral: true
+            });
+        }
 
         // إنشاء تذكرة ذكية
         const smartTicketData = await SmartTicketManager.createSmartTicket(interaction, content);
@@ -755,11 +775,13 @@ async function handleCreateTicket(interaction) {
 // دالة معالجة إغلاق التذكرة
 async function handleCloseTicket(interaction) {
     try {
-        await interaction.deferReply({ ephemeral: true });
+        // إرسال رد أولي سريع
+        await interaction.reply({ content: '🔄 جاري إغلاق التذكرة...', ephemeral: true });
 
+        // التحقق من الأذونات
         if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
             return await interaction.followUp({
-                content: 'ليس لديك صلاحية إغلاق التذاكر!',
+                content: '❌ ليس لديك صلاحية إغلاق التذاكر!',
                 ephemeral: true 
             });
         }
@@ -767,21 +789,22 @@ async function handleCloseTicket(interaction) {
         const ticketId = interaction.customId.replace('close_ticket_', '');
         const Ticket = require('./models/Ticket');
         
+        // البحث عن التذكرة
         const ticket = await Ticket.findOne({ ticketId: `TICKET-${ticketId}` });
         if (ticket) {
             ticket.status = 'closed';
             await ticket.save();
         }
 
+        // إغلاق القناة بعد 5 ثواني
         await interaction.followUp({
-            content: 'تم إغلاق التذكرة بنجاح!',
+            content: 'تم إغلاق التذكرة بنجاح! سيتم إغلاق القناة خلال 5 ثواني...',
             ephemeral: true
         });
 
-        // إغلاق القناة بعد 5 ثواني
-        await interaction.channel.send('سيتم إغلاق هذه التذكرة خلال 5 ثواني...');
         setTimeout(async () => {
             try {
+                await interaction.channel.send('سيتم حذف القناة الآن...');
                 await interaction.channel.delete();
             } catch (error) {
                 console.error('فشل في حذف القناة:', error);
@@ -850,8 +873,11 @@ async function handleCloseTicket(interaction) {
         await logTicketAction(interaction.guild, closeLogEmbed);
 
     } catch (error) {
-        logger.error('Error in handleCloseTicket:', error);
-        await handleInteractionError(interaction, error);
+        console.error('خطأ في handleCloseTicket:', error);
+        await interaction.followUp({
+            content: '❌ حدث خطأ أثناء إغلاق التذكرة. يرجى المحاولة لاحقًا.',
+            ephemeral: true
+        });
     }
 }
 
@@ -875,7 +901,9 @@ function getTicketDuration(createdAt) {
 // دالة معالجة تسجيل الحضور
 async function handleCheckIn(interaction) {
     const userId = interaction.user.id;
-    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     try {
         console.log('Starting check-in process for user:', userId);
 
@@ -890,48 +918,48 @@ async function handleCheckIn(interaction) {
         // وضع قفل للمستخدم
         attendanceLocks.set(userId, true);
         
-        await interaction.deferReply({ ephemeral: true });
-
-        const Attendance = require('./models/Attendance');
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // البحث عن سجل اليوم
-        let record = await Attendance.findOne({
-            userId: interaction.user.id,
-            guildId: interaction.guild.id,
-            date: {
-                $gte: today,
-                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
-            }
+        // إرسال رد فوري للمستخدم
+        await interaction.reply({
+            content: '🔄 جاري تسجيل الحضور...',
+            ephemeral: true
         });
 
-        if (!record) {
-            record = new Attendance({
+        // استخدام الدالة الجديدة للتحقق من السجلات
+        const { attendanceRecord, leaveRecord } = await checkAttendanceAndLeave(userId, interaction.guild.id, today);
+
+        if (!attendanceRecord) {
+            const record = new Attendance({
                 userId: interaction.user.id,
                 guildId: interaction.guild.id,
                 date: today,
                 sessions: []
             });
-        }
 
-        // التحقق من عدم وجود جلسة مفتوحة
-        const hasOpenSession = record.sessions.some(session => !session.checkOut);
-        if (hasOpenSession) {
-            return await interaction.followUp({
-                content: '❌ لديك جلسة حضور مفتوحة بالفعل',
-                ephemeral: true
+            // إضافة جلسة جديدة
+            record.sessions.push({
+                checkIn: new Date(),
+                duration: 0
             });
+
+            await record.save();
+        } else {
+            // التحقق من عدم وجود جلسة مفتوحة
+            const hasOpenSession = attendanceRecord.sessions.some(session => !session.checkOut);
+            if (hasOpenSession) {
+                return await interaction.followUp({
+                    content: '❌ لديك جلسة حضور مفتوحة بالفعل',
+                    ephemeral: true
+                });
+            }
+
+            // إضافة جلسة جديدة
+            attendanceRecord.sessions.push({
+                checkIn: new Date(),
+                duration: 0
+            });
+
+            await attendanceRecord.save();
         }
-
-        // إضافة جلسة جديدة
-        record.sessions.push({
-            checkIn: new Date(),
-            duration: 0
-        });
-
-        await record.save();
 
         // إضافة رتبة الحضور
         const attendanceRole = interaction.guild.roles.cache.find(role => role.name === 'مسجل حضوره');
@@ -984,9 +1012,12 @@ async function handleCheckIn(interaction) {
     } catch (error) {
         logger.error('Error in check-in:', error);
         await interaction.followUp({
-            content: 'حدث خطأ أثناء تسجيل الحضور',
+            content: '❌ حدث خطأ أثناء تسجيل الحضور',
             ephemeral: true
         });
+    } finally {
+        // إزالة القفل بعد الانتهاء
+        attendanceLocks.delete(userId);
     }
 }
 
@@ -1016,18 +1047,11 @@ function formatSessionDuration(checkIn, checkOut) {
 // تحديث دالة تسجيل الانصراف
 async function handleCheckOut(interaction) {
     try {
-        // التحقق من القفل
-        if (attendanceLocks.get(interaction.user.id)) {
-            return await interaction.reply({
-                content: 'جاري معالجة طلب سابق، الرجاء الانتظار...',
-                ephemeral: true
-            });
-        }
-
-        // وضع قفل للمستخدم
-        attendanceLocks.set(interaction.user.id, true);
-
-        await interaction.deferReply({ ephemeral: true });
+        // إرسال رد فوري للمستخدم
+        await interaction.reply({
+            content: '🔄 جاري تسجيل الانصراف...',
+            ephemeral: true
+        });
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1130,16 +1154,34 @@ async function handleCheckOut(interaction) {
     } catch (error) {
         logger.error('Error in check-out:', error);
         await interaction.followUp({
-            content: 'حدث خطأ أثناء تسجيل الانصراف',
+            content: '❌ حدث خطأ أثناء تسجيل الانصراف',
             ephemeral: true
         });
-    } finally {
-        // إزالة القفل بعد الانتهاء
-        attendanceLocks.delete(interaction.user.id);
     }
 }
 
 // =============== الدوال المساعدة ==================
+// دالة لتقسيم الرسالة إلى أجزاء
+function splitMessage(message, limit = 1024) {
+    const parts = [];
+    let currentPart = '';
+
+    message.split('\n').forEach(line => {
+        if (currentPart.length + line.length + 1 <= limit) {
+            currentPart += (currentPart.length ? '\n' : '') + line;
+        } else {
+            parts.push(currentPart);
+            currentPart = line;
+        }
+    });
+
+    if (currentPart) {
+        parts.push(currentPart); // إضافة الجزء الأخير
+    }
+
+    return parts;
+}
+
 // دالة لإرسال التقرير اليومي
 async function sendDailyReport(guild) {
     try {
@@ -1237,10 +1279,14 @@ async function sendDailyReport(guild) {
             return `**${index + 1}.** ${stats.username}\n` +
                 `⏰ المدة: ${hours}:${minutes.toString().padStart(2, '0')} ساعة\n` +
                 `📊 عدد الجلسات: ${stats.sessions}\n` +
-                `🕐 أول حضور: ${stats.earliestCheckIn.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}\n` +
-                `🕐 آخر انصراف: ${stats.latestCheckOut.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}\n`;
+                `🕐 أول حضور: ${stats.earliestCheckIn?.toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: true }) || 'غير متوفر'}\n` +
+                `🕐 آخر انصراف: ${stats.latestCheckOut?.toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: true }) || 'غير متوفر'}\n`;
         }).join('\n');
 
+        // تقسيم الرسالة إلى أجزاء إذا تجاوزت 1024 حرف
+        const reportParts = splitMessage(reportText);
+        
+        // إرسال الرسالة
         await logChannel.send({
             embeds: [{
                 title: '📊 التقرير اليومي للحضور',
@@ -1256,12 +1302,12 @@ async function sendDailyReport(guild) {
                             `👥 إجمالي الحضور: ${records.length} عضو\n` +
                             `⏱️ إجمالي ساعات العمل: ${totalHours}:${remainingMinutes.toString().padStart(2, '0')} ساعة\n` +
                             `🔄 إجمالي الجلسات: ${totalSessions}\n` +
-                            `⏰ أول حضور: ${earliestCheckIn.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}\n` +
-                            `⏰ آخر انصراف: ${latestCheckOut.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+                            `⏰ أول حضور: ${earliestCheckIn?.toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: true }) || 'غير متوفر'}\n` +
+                            `⏰ آخر انصراف: ${latestCheckOut?.toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', hour12: true }) || 'غير متوفر'}`
                     },
                     {
                         name: '👤 تفاصيل الأعضاء',
-                        value: reportText || 'لا يوجد سجلات'
+                        value: reportParts[0] || 'لا يوجد سجلات'
                     }
                 ],
                 color: 0x00ff00,
@@ -1271,6 +1317,15 @@ async function sendDailyReport(guild) {
                 }
             }]
         });
+
+        // إرسال الأجزاء المتبقية
+        for (let i = 1; i < reportParts.length; i++) {
+            await logChannel.send({
+                embeds: [{
+                    description: reportParts[i]
+                }]
+            });
+        }
     } catch (error) {
         console.error('Error sending daily report:', error);
     }
@@ -1846,21 +1901,13 @@ function setupTicketCleanup() {
 // تحديث دالة startBot
 async function startBot() {
     try {
-        // ... الكود الحالي ...
-
         // إعداد تنظيف التذاكر
         setupTicketCleanup();
-        
-        // ... باقي الكود ...
-
     } catch (error) {
         logger.error('Error starting bot:', error);
         process.exit(1);
     }
 }
-
-// إضافة استيراد مدير النقاط
-const PointsManager = require('./utils/pointsManager');
 
 // إضافة أمر عرض النقاط
 client.on(Events.InteractionCreate, async interaction => {
@@ -2308,4 +2355,26 @@ async function generateDailyAttendanceLog(guild) {
     } catch (error) {
         console.error('Error in daily attendance log:', error);
     }
+}
+
+// تحسين عمليات قاعدة البيانات
+async function checkAttendanceAndLeave(userId, guildId, today) {
+    const [attendanceRecord, leaveRecord] = await Promise.all([
+        Attendance.findOne({
+            userId,
+            guildId,
+            date: {
+                $gte: today,
+                $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000)
+            }
+        }),
+        Leave.findOne({
+            adminId: userId,
+            guildId,
+            startDate: { $lte: today },
+            endDate: { $gte: today },
+            status: 'approved'
+        })
+    ]);
+    return { attendanceRecord, leaveRecord };
 }
